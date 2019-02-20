@@ -202,6 +202,7 @@ func dialogRss(mw walk.Form, rss *Rss) (int, error) {
 func (mw *MyMainWindow) log(msg string) error {
 	var err error
 	mw.Synchronize(func() {
+		log.Println(msg)
 		beforeText := mw.te.Text()
 		if beforeText == "" {
 			err = mw.te.SetText(msg + "\r\n")
@@ -219,38 +220,47 @@ func (mw *MyMainWindow) saveAction_Triggered() {
 	}
 }
 
-func (mw *MyMainWindow) playAction_Triggered() {
-	var url string
-	fp := gofeed.NewParser()
-	for _, i := range mw.cfg.Rss {
-		if i.Name == mw.cb.Text() {
-			url = i.Url
-		}
-	}
-	feed, err := fp.ParseURL(url)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (mw *MyMainWindow) setEnabled(enabled bool) {
+	mw.Synchronize(func() {
+		//mw.lb.SetEnabled(enabled)
+		mw.le.SetEnabled(enabled)
+		//mw.pb.SetEnabled(enabled)
+		mw.cb.SetEnabled(enabled)
+		mw.te.SetEnabled(enabled)
+	})
+}
 
-	mw.SetEnabled(false)
+func (mw *MyMainWindow) playAction_Triggered() {
+	mw.setEnabled(false)
 	go func() {
-		defer func() {
-			mw.Synchronize(func() {
-				mw.SetEnabled(true)
-			})
-		}()
+		defer mw.setEnabled(true)
+
+		var url string
+		fp := gofeed.NewParser()
+		for _, i := range mw.cfg.Rss {
+			if i.Name == mw.cb.Text() {
+				url = i.Url
+			}
+		}
+		feed, err := fp.ParseURL(url)
+		if err != nil {
+			mw.log(fmt.Sprintf("parse fail %+v.\n", err))
+			return
+		}
+
 		for _, item := range feed.Items {
 			mw.log(item.Title)
 			mw.log("  " + item.Description)
 			err := exec.Command(mw.cfg.Vrx.Path, item.Title).Run()
 			if err != nil {
 				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-
+				return
 			}
 			time.Sleep(2 * time.Second)
 			err = exec.Command(mw.cfg.Vrx.Path, item.Description).Run()
 			if err != nil {
 				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+				return
 			}
 			time.Sleep(5 * time.Second)
 		}
