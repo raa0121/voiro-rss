@@ -86,10 +86,7 @@ func (cfg *config) save() error {
 		return err
 	}
 	defer f.Close()
-	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
-		return err
-	}
-	return nil
+	return toml.NewEncoder(f).Encode(cfg)
 }
 
 func (mw *MyMainWindow) openAction_Triggered() {
