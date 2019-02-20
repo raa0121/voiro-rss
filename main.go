@@ -28,19 +28,20 @@ type MyMainWindow struct {
 }
 
 type config struct {
-	Vrx *Vrx   `toml:"vrx"`
-	Rss []*Rss `toml:"rss"`
+	Vrx Vrx   `toml:"vrx"`
+	Rss []Rss `toml:"rss"`
 }
+
 type Vrx struct {
 	Path string `toml:"path"`
 }
+
 type Rss struct {
 	Name string `toml:"name"`
 	Url  string `toml:"url"`
 }
 
 func (cfg *config) load() error {
-	cfg.Vrx = new(Vrx)
 	cfg.Vrx.Path = "C:\\Program Files"
 	cfg.Rss = KnownRss()
 
@@ -101,7 +102,7 @@ func (mw *MyMainWindow) addAction_Triggered() {
 	if err != nil {
 		log.Print(err)
 	} else if cmd == walk.DlgCmdOK {
-		mw.cfg.Rss = append(mw.cfg.Rss, &rss)
+		mw.cfg.Rss = append(mw.cfg.Rss, rss)
 		_ = mw.cb.SetModel(mw.cfg.Rss)
 		_ = mw.cb.SetCurrentIndex(0)
 	}
@@ -130,8 +131,8 @@ func (mw *MyMainWindow) openVRX() error {
 	return nil
 }
 
-func KnownRss() []*Rss {
-	return []*Rss{
+func KnownRss() []Rss {
+	return []Rss{
 		{"NHK", "https://www3.nhk.or.jp/rss/news/cat0.xml"},
 	}
 }
