@@ -40,6 +40,9 @@ type Rss struct {
 }
 
 func (cfg *config) load() error {
+	cfg.Vrx = new(Vrx)
+	cfg.Vrx.Path = "C:\\Program Files"
+
 	dir := os.Getenv("APPDATA")
 	if dir == "" {
 		dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
@@ -66,8 +69,6 @@ func (cfg *config) load() error {
 	if err != nil {
 		return err
 	}
-	cfg.Vrx = new(Vrx)
-	cfg.Vrx.Path = "C:\\Program Files"
 	cfg.Rss = KnownRss()
 	defer f.Close()
 	return toml.NewEncoder(f).Encode(cfg)
@@ -202,17 +203,16 @@ func dialogRss(mw walk.Form, rss *Rss) (int, error) {
 }
 
 func (mw *MyMainWindow) log(msg string) error {
-	beforeText := mw.te.Text()
-	if beforeText == "" {
-		if err := mw.te.SetText(msg + "\r\n"); err != nil {
-			return err
+	var err error
+	mw.Synchronize(func() {
+		beforeText := mw.te.Text()
+		if beforeText == "" {
+			err = mw.te.SetText(msg + "\r\n")
+		} else {
+			err = mw.te.SetText(beforeText + msg + "\r\n")
 		}
-	} else {
-		if err := mw.te.SetText(beforeText + msg + "\r\n"); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
+	return err
 }
 
 func (mw *MyMainWindow) saveAction_Triggered() {
@@ -236,25 +236,24 @@ func (mw *MyMainWindow) playAction_Triggered() {
 	}
 
 	mw.SetEnabled(false)
-	/*
-		TODO: use mw.Synchronize(func() {})
-	*/
-	for _, item := range feed.Items {
-		mw.log(item.Title)
-		mw.log("  " + item.Description)
-		err := exec.Command(mw.cfg.Vrx.Path, item.Title).Run()
-		if err != nil {
-			mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+	go func() {
+		defer mw.SetEnabled(true)
+		for _, item := range feed.Items {
+			mw.log(item.Title)
+			mw.log("  " + item.Description)
+			err := exec.Command(mw.cfg.Vrx.Path, item.Title).Run()
+			if err != nil {
+				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
 
+			}
+			time.Sleep(2 * time.Second)
+			err = exec.Command(mw.cfg.Vrx.Path, item.Description).Run()
+			if err != nil {
+				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+			}
+			time.Sleep(5 * time.Second)
 		}
-		time.Sleep(2 * time.Second)
-		err = exec.Command(mw.cfg.Vrx.Path, item.Description).Run()
-		if err != nil {
-			mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-		}
-		time.Sleep(5 * time.Second)
-	}
-	mw.SetEnabled(true)
+	}()
 }
 
 func main() {
