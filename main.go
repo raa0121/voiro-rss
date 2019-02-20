@@ -42,6 +42,7 @@ type Rss struct {
 func (cfg *config) load() error {
 	cfg.Vrx = new(Vrx)
 	cfg.Vrx.Path = "C:\\Program Files"
+	cfg.Rss = KnownRss()
 
 	dir := os.Getenv("APPDATA")
 	if dir == "" {
@@ -69,7 +70,6 @@ func (cfg *config) load() error {
 	if err != nil {
 		return err
 	}
-	cfg.Rss = KnownRss()
 	defer f.Close()
 	return toml.NewEncoder(f).Encode(cfg)
 }
@@ -237,7 +237,12 @@ func (mw *MyMainWindow) playAction_Triggered() {
 
 	mw.SetEnabled(false)
 	go func() {
-		defer mw.SetEnabled(true)
+		defer func() {
+			mw.Synchronize(func() {
+				mw.SetEnabled(true)
+			})
+		}()
+		fmt.Println(feed.Items)
 		for _, item := range feed.Items {
 			mw.log(item.Title)
 			mw.log("  " + item.Description)
