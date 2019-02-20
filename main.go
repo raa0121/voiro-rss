@@ -70,6 +70,24 @@ func (cfg *config) load() error {
 	return toml.NewEncoder(f).Encode(cfg)
 }
 
+func (cfg *config) save() error {
+	dir := os.Getenv("APPDATA")
+	if dir == "" {
+		dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
+	}
+	dir = filepath.Join(dir, "VroidRSS")
+	file := filepath.Join(dir, "config.toml")
+	f, err := os.OpenFile(file, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (mw *MyMainWindow) openAction_Triggered() {
 	if err := mw.openVRX(); err != nil {
 		log.Print(err)
@@ -243,19 +261,8 @@ func main() {
 			PushButton{
 				Text: "保存",
 				OnClicked: func() {
-					dir := os.Getenv("APPDATA")
-					if dir == "" {
-						dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
-					}
-					dir = filepath.Join(dir, "VroidRSS")
-					file := filepath.Join(dir, "config.toml")
-					f, err := os.OpenFile(file, os.O_RDWR, 0644)
-					if err != nil {
-						log.Fatal(err)
-					}
 					cfg.Vrx.Path = mw.prevFilePath
-					defer f.Close()
-					if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+					if err := cfg.save(); err != nil {
 						log.Fatal(err)
 					}
 				},
