@@ -82,7 +82,7 @@ func (cfg *config) save() error {
 	}
 	dir = filepath.Join(dir, "VroidRSS")
 	file := filepath.Join(dir, "config.toml")
-	f, err := os.OpenFile(file, os.O_RDWR, 0644)
+	f, err := os.Create(file)
 	if err != nil {
 		return err
 	}
