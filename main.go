@@ -23,7 +23,10 @@ type MyMainWindow struct {
 	te           *walk.TextEdit
 	RssUrl       string
 	prevFilePath string
+
+	cfg *config
 }
+
 type config struct {
 	Vrx *Vrx   `toml:"vrx"`
 	Rss []*Rss `toml:"rss"`
@@ -91,6 +94,18 @@ func (cfg *config) save() error {
 func (mw *MyMainWindow) openAction_Triggered() {
 	if err := mw.openVRX(); err != nil {
 		log.Print(err)
+	}
+}
+
+func (mw *MyMainWindow) addAction_Triggered() {
+	var rss Rss
+	cmd, err := dialogRss(mw, &rss)
+	if err != nil {
+		log.Print(err)
+	} else if cmd == walk.DlgCmdOK {
+		mw.cfg.Rss = append(mw.cfg.Rss, &rss)
+		_ = mw.cb.SetModel(mw.cfg.Rss)
+		_ = mw.cb.SetCurrentIndex(0)
 	}
 }
 
@@ -200,6 +215,48 @@ func (mw *MyMainWindow) log(msg string) error {
 	return nil
 }
 
+func (mw *MyMainWindow) saveAction_Triggered() {
+	mw.cfg.Vrx.Path = mw.prevFilePath
+	if err := mw.cfg.save(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (mw *MyMainWindow) playAction_Triggered() {
+	var url string
+	fp := gofeed.NewParser()
+	for _, i := range mw.cfg.Rss {
+		if i.Name == mw.cb.Text() {
+			url = i.Url
+		}
+	}
+	feed, err := fp.ParseURL(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mw.SetEnabled(false)
+	/*
+		TODO: use mw.Synchronize(func() {})
+	*/
+	for _, item := range feed.Items {
+		mw.log(item.Title)
+		mw.log("  " + item.Description)
+		err := exec.Command(mw.cfg.Vrx.Path, item.Title).Run()
+		if err != nil {
+			mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+
+		}
+		time.Sleep(2 * time.Second)
+		err = exec.Command(mw.cfg.Vrx.Path, item.Description).Run()
+		if err != nil {
+			mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+		}
+		time.Sleep(5 * time.Second)
+	}
+	mw.SetEnabled(true)
+}
+
 func main() {
 	var cfg config
 	err := cfg.load()
@@ -207,6 +264,8 @@ func main() {
 		log.Fatal(err)
 	}
 	mw := new(MyMainWindow)
+	mw.cfg = &cfg
+
 	if _, err := (MainWindow{
 		Title:   "VoiroRSS",
 		MinSize: Size{Width: 500, Height: 75},
@@ -227,18 +286,8 @@ func main() {
 						CurrentIndex:  0,
 					},
 					PushButton{
-						Text: "追加",
-						OnClicked: func() {
-							var rss Rss
-							cmd, err := dialogRss(mw, &rss)
-							if err != nil {
-								log.Print(err)
-							} else if cmd == walk.DlgCmdOK {
-								cfg.Rss = append(cfg.Rss, &rss)
-								_ = mw.cb.SetModel(cfg.Rss)
-								_ = mw.cb.SetCurrentIndex(0)
-							}
-						},
+						Text:      "追加",
+						OnClicked: mw.addAction_Triggered,
 					},
 				},
 			},
@@ -259,48 +308,12 @@ func main() {
 				},
 			},
 			PushButton{
-				Text: "保存",
-				OnClicked: func() {
-					cfg.Vrx.Path = mw.prevFilePath
-					if err := cfg.save(); err != nil {
-						log.Fatal(err)
-					}
-				},
+				Text:      "保存",
+				OnClicked: mw.saveAction_Triggered,
 			},
 			PushButton{
-				Text: "取得・再生",
-				OnClicked: func() {
-					var url string
-					fp := gofeed.NewParser()
-					for _, i := range cfg.Rss {
-						if i.Name == mw.cb.Text() {
-							url = i.Url
-						}
-					}
-					feed, err := fp.ParseURL(url)
-					if err != nil {
-						log.Fatal(err)
-					}
-					mw.Synchronize(func() {
-						go func() {
-							for _, item := range feed.Items {
-								mw.log(item.Title)
-								mw.log("  " + item.Description)
-								err = exec.Command(cfg.Vrx.Path, item.Title).Run()
-								if err != nil {
-									mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-
-								}
-								time.Sleep(2 * time.Second)
-								err = exec.Command(cfg.Vrx.Path, item.Description).Run()
-								if err != nil {
-									mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-								}
-								time.Sleep(5 * time.Second)
-							}
-						}()
-					})
-				},
+				Text:      "取得・再生",
+				OnClicked: mw.playAction_Triggered,
 			},
 			TextEdit{
 				AssignTo: &mw.te,
