@@ -119,7 +119,6 @@ func (mw *MyMainWindow) openVRX() error {
 		log.Fatal(err)
 		return err
 	} else if !ok {
-		log.Fatal(ok)
 		return nil
 	}
 	mw.prevFilePath = dlg.FilePath
