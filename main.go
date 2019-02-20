@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/lxn/walk"
-	. "github.com/lxn/walk/declarative"
-	"github.com/mmcdole/gofeed"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/BurntSushi/toml"
+	"github.com/lxn/walk"
+	. "github.com/lxn/walk/declarative"
+	"github.com/mmcdole/gofeed"
 )
 
 type MyMainWindow struct {
