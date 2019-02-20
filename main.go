@@ -42,7 +42,7 @@ type Rss struct {
 }
 
 func (cfg *config) load() error {
-	cfg.Vrx.Path = "C:\\Program Files"
+	cfg.Vrx.Path = `C:\Program Files`
 	cfg.Rss = KnownRss()
 
 	dir := os.Getenv("APPDATA")
@@ -240,7 +240,6 @@ func (mw *MyMainWindow) playAction_Triggered() {
 				mw.SetEnabled(true)
 			})
 		}()
-		fmt.Println(feed.Items)
 		for _, item := range feed.Items {
 			mw.log(item.Title)
 			mw.log("  " + item.Description)
