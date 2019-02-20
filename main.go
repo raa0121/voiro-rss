@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/lxn/walk"
-	. "github.com/lxn/walk/declarative"
-	"github.com/mmcdole/gofeed"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/BurntSushi/toml"
+	"github.com/lxn/walk"
+	. "github.com/lxn/walk/declarative"
+	"github.com/mmcdole/gofeed"
 )
 
 type MyMainWindow struct {
@@ -22,20 +23,28 @@ type MyMainWindow struct {
 	te           *walk.TextEdit
 	RssUrl       string
 	prevFilePath string
+
+	cfg *config
 }
+
 type config struct {
-	Vrx *Vrx   `toml:"vrx"`
-	Rss []*Rss `toml:"rss"`
+	Vrx Vrx   `toml:"vrx"`
+	Rss []Rss `toml:"rss"`
 }
+
 type Vrx struct {
 	Path string `toml:"path"`
 }
+
 type Rss struct {
 	Name string `toml:"name"`
 	Url  string `toml:"url"`
 }
 
 func (cfg *config) load() error {
+	cfg.Vrx.Path = `C:\Program Files`
+	cfg.Rss = KnownRss()
+
 	dir := os.Getenv("APPDATA")
 	if dir == "" {
 		dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
@@ -62,9 +71,21 @@ func (cfg *config) load() error {
 	if err != nil {
 		return err
 	}
-	cfg.Vrx = new(Vrx)
-	cfg.Vrx.Path = "C:\\Program Files"
-	cfg.Rss = KnownRss()
+	defer f.Close()
+	return toml.NewEncoder(f).Encode(cfg)
+}
+
+func (cfg *config) save() error {
+	dir := os.Getenv("APPDATA")
+	if dir == "" {
+		dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
+	}
+	dir = filepath.Join(dir, "VroidRSS")
+	file := filepath.Join(dir, "config.toml")
+	f, err := os.Create(file)
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	return toml.NewEncoder(f).Encode(cfg)
 }
@@ -72,6 +93,18 @@ func (cfg *config) load() error {
 func (mw *MyMainWindow) openAction_Triggered() {
 	if err := mw.openVRX(); err != nil {
 		log.Print(err)
+	}
+}
+
+func (mw *MyMainWindow) addAction_Triggered() {
+	var rss Rss
+	cmd, err := dialogRss(mw, &rss)
+	if err != nil {
+		log.Print(err)
+	} else if cmd == walk.DlgCmdOK {
+		mw.cfg.Rss = append(mw.cfg.Rss, rss)
+		_ = mw.cb.SetModel(mw.cfg.Rss)
+		_ = mw.cb.SetCurrentIndex(0)
 	}
 }
 
@@ -86,7 +119,6 @@ func (mw *MyMainWindow) openVRX() error {
 		log.Fatal(err)
 		return err
 	} else if !ok {
-		log.Fatal(ok)
 		return nil
 	}
 	mw.prevFilePath = dlg.FilePath
@@ -98,8 +130,8 @@ func (mw *MyMainWindow) openVRX() error {
 	return nil
 }
 
-func KnownRss() []*Rss {
-	return []*Rss{
+func KnownRss() []Rss {
+	return []Rss{
 		{"NHK", "https://www3.nhk.or.jp/rss/news/cat0.xml"},
 	}
 }
@@ -168,17 +200,71 @@ func dialogRss(mw walk.Form, rss *Rss) (int, error) {
 }
 
 func (mw *MyMainWindow) log(msg string) error {
-	beforeText := mw.te.Text()
-	if beforeText == "" {
-		if err := mw.te.SetText(msg + "\r\n"); err != nil {
-			return err
+	var err error
+	mw.Synchronize(func() {
+		log.Println(msg)
+		beforeText := mw.te.Text()
+		if beforeText == "" {
+			err = mw.te.SetText(msg + "\r\n")
+		} else {
+			err = mw.te.SetText(beforeText + msg + "\r\n")
 		}
-	} else {
-		if err := mw.te.SetText(beforeText + msg + "\r\n"); err != nil {
-			return err
-		}
+	})
+	return err
+}
+
+func (mw *MyMainWindow) saveAction_Triggered() {
+	mw.cfg.Vrx.Path = mw.prevFilePath
+	if err := mw.cfg.save(); err != nil {
+		log.Fatal(err)
 	}
-	return nil
+}
+
+func (mw *MyMainWindow) setEnabled(enabled bool) {
+	mw.Synchronize(func() {
+		//mw.lb.SetEnabled(enabled)
+		mw.le.SetEnabled(enabled)
+		//mw.pb.SetEnabled(enabled)
+		mw.cb.SetEnabled(enabled)
+		mw.te.SetEnabled(enabled)
+	})
+}
+
+func (mw *MyMainWindow) playAction_Triggered() {
+	mw.setEnabled(false)
+	go func() {
+		defer mw.setEnabled(true)
+
+		var url string
+		fp := gofeed.NewParser()
+		for _, i := range mw.cfg.Rss {
+			if i.Name == mw.cb.Text() {
+				url = i.Url
+			}
+		}
+		feed, err := fp.ParseURL(url)
+		if err != nil {
+			mw.log(fmt.Sprintf("parse fail %+v.\n", err))
+			return
+		}
+
+		for _, item := range feed.Items {
+			mw.log(item.Title)
+			mw.log("  " + item.Description)
+			err := exec.Command(mw.cfg.Vrx.Path, item.Title).Run()
+			if err != nil {
+				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+				return
+			}
+			time.Sleep(2 * time.Second)
+			err = exec.Command(mw.cfg.Vrx.Path, item.Description).Run()
+			if err != nil {
+				mw.log(fmt.Sprintf("execute fail %+v.\n", err))
+				return
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
 }
 
 func main() {
@@ -188,6 +274,8 @@ func main() {
 		log.Fatal(err)
 	}
 	mw := new(MyMainWindow)
+	mw.cfg = &cfg
+
 	if _, err := (MainWindow{
 		Title:   "VoiroRSS",
 		MinSize: Size{Width: 500, Height: 75},
@@ -208,18 +296,8 @@ func main() {
 						CurrentIndex:  0,
 					},
 					PushButton{
-						Text: "追加",
-						OnClicked: func() {
-							var rss Rss
-							cmd, err := dialogRss(mw, &rss)
-							if err != nil {
-								log.Print(err)
-							} else if cmd == walk.DlgCmdOK {
-								cfg.Rss = append(cfg.Rss, &rss)
-								_ = mw.cb.SetModel(cfg.Rss)
-								_ = mw.cb.SetCurrentIndex(0)
-							}
-						},
+						Text:      "追加",
+						OnClicked: mw.addAction_Triggered,
 					},
 				},
 			},
@@ -240,59 +318,12 @@ func main() {
 				},
 			},
 			PushButton{
-				Text: "保存",
-				OnClicked: func() {
-					dir := os.Getenv("APPDATA")
-					if dir == "" {
-						dir = filepath.Join(os.Getenv("USERPROFILE"), "Application Data")
-					}
-					dir = filepath.Join(dir, "VroidRSS")
-					file := filepath.Join(dir, "config.toml")
-					f, err := os.OpenFile(file, os.O_RDWR, 0644)
-					if err != nil {
-						log.Fatal(err)
-					}
-					cfg.Vrx.Path = mw.prevFilePath
-					defer f.Close()
-					if err := toml.NewEncoder(f).Encode(cfg); err != nil {
-						log.Fatal(err)
-					}
-				},
+				Text:      "保存",
+				OnClicked: mw.saveAction_Triggered,
 			},
 			PushButton{
-				Text: "取得・再生",
-				OnClicked: func() {
-					var url string
-					fp := gofeed.NewParser()
-					for _, i := range cfg.Rss {
-						if i.Name == mw.cb.Text() {
-							url = i.Url
-						}
-					}
-					feed, err := fp.ParseURL(url)
-					if err != nil {
-						log.Fatal(err)
-					}
-					mw.Synchronize(func() {
-						go func() {
-							for _, item := range feed.Items {
-								mw.log(item.Title)
-								mw.log("  " + item.Description)
-								err = exec.Command(cfg.Vrx.Path, item.Title).Run()
-								if err != nil {
-									mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-
-								}
-								time.Sleep(2 * time.Second)
-								err = exec.Command(cfg.Vrx.Path, item.Description).Run()
-								if err != nil {
-									mw.log(fmt.Sprintf("execute fail %+v.\n", err))
-								}
-								time.Sleep(5 * time.Second)
-							}
-						}()
-					})
-				},
+				Text:      "取得・再生",
+				OnClicked: mw.playAction_Triggered,
 			},
 			TextEdit{
 				AssignTo: &mw.te,
